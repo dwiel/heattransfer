@@ -1,3 +1,7 @@
+"""
+very very very rudimentary proof of concept
+"""
+
 import sys
 import math
 import pygame
