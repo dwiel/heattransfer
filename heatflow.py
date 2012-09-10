@@ -37,15 +37,18 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
   method = 'tuple'
   #method = 'normal'
   accuracy = 'normal'
-  accuracy = 'high'
-  accuracy = 'low'
+  #accuracy = 'high'
+  #accuracy = 'low'
   
+  # 0.25 t_ratio_limit has been 2.5% off in the past
+  # 0.1  t_ratio_limit has been 1.5% off in the past
+  # 0.01 t_ratio_limit has been 0.04% off in the past
   if accuracy == 'low' :
-    t_ratio_limit = 0.05
+    t_ratio_limit = 0.25
   elif accuracy == 'normal' :
-    t_ratio_limit = 0.01
+    t_ratio_limit = 0.1
   elif accuracy == 'high' :
-    t_ratio_limit = 0.005
+    t_ratio_limit = 0.01
   else :
     raise Exception("unkown accuracy %s" % accuracy)
   
@@ -89,7 +92,7 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
       m['i'] = i
       ts[i] = m['temp']
       masses_i[i] = m
-
+    
     cs = [(c['m1']['i'], c['m2']['i'], c['m1_temp_per_step_per_deg'], c['m2_temp_per_step_per_deg']) for c in connections]
     bs = [(b['mass']['i'], b['temp/step'], b.get('end_t', 9999999999)) for b in constant_btu_sources]
     
@@ -146,6 +149,8 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
         m['btu/hour_loss'] = 0
         m['btu/hour_gain'] = 0
       
+      # for now, we only calculate btu movement through direct conduction, not
+      # from constant heat sources
       for c in connections :
         m1 = c['m1']
         m2 = c['m2']
@@ -153,7 +158,7 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
         btu = c['btu_per_deg'] * (m1['temp'] - m2['temp'])
         
         # calculate how many btu are passing through each material
-        btu_p_tstep = btu / tstep / 2.0
+        btu_p_tstep = btu / tstep
         if btu_p_tstep > 0 :
           # positive btu_p_tstep implies heat moving from m1 to m2
           m1['btu/hour_loss'] += btu_p_tstep

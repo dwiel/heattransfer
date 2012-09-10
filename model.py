@@ -19,7 +19,7 @@ initial_indoor_temp = 60
 # volume in cubic inches
 masses = {
   'outside' : {
-    'volume'   : 1000000000000,
+    'volume'   : 100000000000000,
     'temp'     : 40,
     'material' : 'air',
   }, 'pex' : {
@@ -36,7 +36,7 @@ masses = {
 
 connections = []
 
-slice_thickness = 0.25
+slice_thickness = 3
 floor_thickness = 6
 slices = int(floor_thickness / slice_thickness)
 if slice_thickness * slices - floor_thickness > 0.01 :
@@ -52,21 +52,27 @@ for i in range(slices) :
     'depth'    : i * slice_thickness
   }
   
+  if i :
+    thickness = slice_thickness
+  else :
+    thickness = slice_thickness/2.0
   connections.append({
     'masses'    : [previous_mass, name],
     'r-value'   : 0.25,
     'area'      : 400 * 144,
-    'thickness' : slice_thickness,
+    'thickness' : thickness,
   })
-  
   previous_mass = name
 
 connections.append({
   'masses'    : [previous_mass, 'inside'],
   'r-value'   : 0.25,
   'area'      : 400 * 144,
-  'thickness' : slice_thickness,
+  'thickness' : slice_thickness/2.0,
 })
+
+for c in connections :
+  print c
 
 constant_btu_sources = [
   #{
@@ -91,4 +97,4 @@ for i in range(6) :
 sensors.append('floor%02d' % int(6/6. * slices))
 sensors.append('inside')
 
-simulate(masses, materials, connections, constant_btu_sources, sensors, 0.00671, 240)
+simulate(masses, materials, connections, constant_btu_sources, sensors, 0.0002, 1000)
