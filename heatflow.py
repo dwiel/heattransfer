@@ -32,11 +32,23 @@ def p_m(m) :
   print '%d btu/hour delta' % int(m['btu/hour_gain'] - m['btu/hour_loss']),
   print
 
-def simulate(masses, materials, connections, constant_btu_sources, sensors) :
-  tstep = 0.000134
+def simulate(masses, materials, connections, constant_btu_sources, sensors, tstep = 1, tmax = 10) :
+  #auto_adjust_tstep = True
   method = 'tuple'
   #method = 'normal'
-    
+  accuracy = 'normal'
+  accuracy = 'high'
+  accuracy = 'low'
+  
+  if accuracy == 'low' :
+    t_ratio_limit = 0.05
+  elif accuracy == 'normal' :
+    t_ratio_limit = 0.01
+  elif accuracy == 'high' :
+    t_ratio_limit = 0.005
+  else :
+    raise Exception("unkown accuracy %s" % accuracy)
+  
   # merge materials and masses; precompute thermal mass in btu
   for name, m in masses.iteritems() :
     mat = m.get('material')
@@ -80,12 +92,13 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors) :
 
     cs = [(c['m1']['i'], c['m2']['i'], c['m1_temp_per_step_per_deg'], c['m2_temp_per_step_per_deg']) for c in connections]
     bs = [(b['mass']['i'], b['temp/step'], b.get('end_t', 9999999999)) for b in constant_btu_sources]
-
+    
   t = 0
-  while t < 10 :
+  while t < tmax :
     # a sense step is a step that the sensors are activated and data is printed
     sense_step = t - int(t) < tstep
     #sense_step = 1
+    #sense_step = 0
     
     # apply constant btu sources
     if method == 'tuple' :
@@ -160,8 +173,12 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors) :
             if ratio > max_temp_ratio :
               max_temp_ratio = ratio
             
-            if ratio > 0.005 :
-              rec_tstep = tstep / (ratio / 0.005)
+            if ratio > t_ratio_limit :
+              rec_tstep = tstep / (ratio / t_ratio_limit)
+              #if auto_adjust_tstep :
+                ## this doesn't work unless we can undo all of the previous steps
+                #print 'reseting tstep to %s' % rec_tstep
+                #return simulate(masses, materials, connections, constant_btu_sources, sensors, tstep = rec_tstep)
               raise Exception(("""
                 timesteps are too large, temperature changed by %s due to delta
                 temperature of %s in one timestep. timesteps are currently %f, 

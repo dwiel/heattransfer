@@ -6,7 +6,7 @@ from heatflow import simulate
 # density in kg/L
 materials = {
   'ceb' : {
-    'heat_capacity' : 100,
+    'heat_capacity' : 2000,
     'density' : 1.922,
   }, 'air' : {
     'heat_capacity' : 1000,
@@ -36,8 +36,7 @@ masses = {
 
 connections = []
 
-#slice_thickness = BigFloat(0.1)
-slice_thickness = 0.5
+slice_thickness = 0.25
 floor_thickness = 6
 slices = int(floor_thickness / slice_thickness)
 if slice_thickness * slices - floor_thickness > 0.01 :
@@ -92,4 +91,4 @@ for i in range(6) :
 sensors.append('floor%02d' % int(6/6. * slices))
 sensors.append('inside')
 
-simulate(masses, materials, connections, constant_btu_sources, sensors)
+simulate(masses, materials, connections, constant_btu_sources, sensors, 0.00671, 240)
