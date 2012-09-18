@@ -1,5 +1,5 @@
 """
-very very very rudimentary proof of concept
+very very very rudimentary proof of concept for visualizing heat transfers
 """
 
 import sys

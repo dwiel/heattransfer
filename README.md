@@ -5,8 +5,13 @@ Very simple heat transfer simulator
 
 TODO:
   radiant & convective transfers
+    need to tell make_wall to use convection sometimes
+    also use convection to outside?
+  use real temperature and sun data
+  add windows/beams to model
   simple visualizer
   automatic timestep adjustments
+    hard to do since you need to be able to undo steps if you go to fast
 
 NOTES:
 

@@ -4,7 +4,7 @@ a tool to help understand how thermal mass affects the heat transfer through a w
 
 """
 ### these were helpful in getting started and for reference, but have been 
-### factored out at this point
+### refactored out at this point
 
 def heatflow(R_material, inches, dt_f = 1, area = 144, hours = 24) :
   # area is passed in as square feet (convert to meters)
@@ -22,28 +22,45 @@ def degree_change(thermal_mass, btu) :
 """
 
 import numpy as np
+import types
 
 def p_m(m) :
+  # display a line of output showing properties of mass m
+
   m['btu/hour'] = min(abs(m['btu/hour_gain']), abs(m['btu/hour_loss']))
-  # '%d kw' % int(m['btu/hour'] * 0.00029307107)
-  print ' ',m['name'], '%.03f' % m['temp'],
-  print '%d btu/hour gain' % int(m['btu/hour_gain']),
-  print '%d btu/hour loss' % int(m['btu/hour_loss']), 
+  print ' ',m['name'], '%.03f' % m['temp'], ':',
+  print '%d btu/hour gain' % int(m['btu/hour_gain']), ':',
+  print '%d btu/hour loss' % int(m['btu/hour_loss']), ':', 
   print '%d btu/hour delta' % int(m['btu/hour_gain'] - m['btu/hour_loss']),
   print
 
-def simulate(masses, materials, connections, constant_btu_sources, sensors, tstep = 1, tmax = 10) :
-  #auto_adjust_tstep = True
-  method = 'tuple'
-  #method = 'normal'
-  accuracy = 'normal'
-  #accuracy = 'high'
-  #accuracy = 'low'
+def simulate(model, tstep = 1, tmax = 10, method = 'tuple', accuracy = 'normal') :
+  """
+  simulate the heat transfer through model
+  tstep is amount of time to progress at each iteration
+  tmax is when the simulation will end
+  method can be 'tuple' or 'normal', tuple is faster, but the code is harder
+    to read, still haven't decided which version should be kept
+  accuracy can be 'very low', 'low', 'normal' and 'high'
+    low has been 2.5% off in the past
+    normal has been 1.5% off in the past
+    high t_ratio_limit has been 0.04% off in the past
+    tstep is what really controls the accuracy, however the simulator
+      periodically determines how accurate the tstep in this model is and will
+      raise an error if falls outside of the accuracy bounds
+  """
+  masses               = model['masses']
+  materials            = model['materials']
+  connections          = model['connections']
+  constant_btu_sources = model['constant_btu_sources']
+  sensors              = model['sensors']
   
   # 0.25 t_ratio_limit has been 2.5% off in the past
   # 0.1  t_ratio_limit has been 1.5% off in the past
   # 0.01 t_ratio_limit has been 0.04% off in the past
-  if accuracy == 'low' :
+  if accuracy == 'very low' :
+    t_ratio_limit = 0.99
+  elif accuracy == 'low' :
     t_ratio_limit = 0.25
   elif accuracy == 'normal' :
     t_ratio_limit = 0.1
@@ -77,13 +94,19 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
   
   # precompute constant_btu_sources
   for b in constant_btu_sources :
-    b['btu/step'] = b['btu/hour'] * tstep
-    b['temp/step'] = b['btu/step'] / b['mass']['thermal_mass']
+    if isinstance(b['btu/hour'], types.FunctionType) :
+      b['temp/step_fn'] = lambda t : (b['btu/hour'](t) * tstep) / b['mass']['thermal_mass']
+      b['temp/step'] = b['temp/step_fn'](0)
+    else :
+      b['temp/step'] = (b['btu/hour'] * tstep) / b['mass']['thermal_mass']
   
   print 'number of masses:', len(masses)
   print 'number of connections:', len(connections)
   print 'tstep:', tstep
   
+  # convert the data points necessary at each step into tuples so they can
+  # be accesses more quickly.  Would otherwise need to index into dicts and
+  # arrays which are fast, but not quite as fast.  roughly 15% speedup
   if method == 'tuple' :
     # add indicies to masses
     ts = [0] * len(masses)
@@ -95,13 +118,20 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
     
     cs = [(c['m1']['i'], c['m2']['i'], c['m1_temp_per_step_per_deg'], c['m2_temp_per_step_per_deg']) for c in connections]
     bs = [(b['mass']['i'], b['temp/step'], b.get('end_t', 9999999999)) for b in constant_btu_sources]
-    
+  
   t = 0
+  
+  # need to initialize temp/step since it is only calculated sometimes
+  for b in constant_btu_sources :
+    if b.get('temp/step_fn') :
+      b['temp/step'] = b['temp/step_fn'](t)
+
   while t < tmax :
     # a sense step is a step that the sensors are activated and data is printed
+    # we normally don't want to do at this every step
     sense_step = t - int(t) < tstep
-    #sense_step = 1
-    #sense_step = 0
+    #sense_step = 1 # print every step
+    #sense_step = 0 # don't print any steps
     
     # apply constant btu sources
     if method == 'tuple' :
@@ -116,7 +146,6 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
         # skip sources whose end_t has past
         if t > b.get('end_t', 9999999999999) : continue
         
-        # add a constant supply of heat into a mass
         b['mass']['temp'] += b['temp/step']
     
     # apply heat transfers
@@ -136,15 +165,24 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
         m2['temp'] += c['m2_temp_per_step_per_deg'] * t_diff
     
     if sense_step :
+      # pull out mass temperatures from array
       if method == 'tuple' :
         for i, temp in enumerate(ts) :
           masses_i[i]['temp'] = temp
       
+      # calculate temp/step for use in the next set of steps
+      for i, b in enumerate(constant_btu_sources) :
+        if b.get('temp/step_fn') :
+          b['temp/step'] = b['temp/step_fn'](t)
+          bs[i] = (bs[i][0], b['temp/step'], bs[i][2])
+      
       # make sure time steps are small enough
       # in order to ensure accuracy, temperatures should never change by more
-      # than 1/200th of a temperature delta
+      # than ratio of a temperature delta as determined by the accuracy
       max_temp_ratio = 0
       
+      # we're going to sum btu/hour loss and gain for each mass, so
+      # initialize with 0
       for m in masses.itervalues() :
         m['btu/hour_loss'] = 0
         m['btu/hour_gain'] = 0
@@ -170,6 +208,7 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
           m2['btu/hour_loss'] += btu_p_tstep * -1
           m1['btu/hour_gain'] += btu_p_tstep * -1
 
+        # ensure we aren't moving to fast through the simulation
         temp_delta = m1['temp'] - m2['temp']
         if temp_delta :
           for diff in [btu / m1['thermal_mass'], btu / m2['thermal_mass']] :
@@ -193,7 +232,6 @@ def simulate(masses, materials, connections, constant_btu_sources, sensors, tste
         
       # display sensor values
       print '%02d:00' % int(t), '%.06f' % max_temp_ratio
-      
       for sensor in sensors :
         p_m(masses[sensor])
       
